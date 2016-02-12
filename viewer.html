@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<title>Three.js Bones Browser</title>
+	</head>
+	<body>
+		<script src="jquery-1.12.0.min.js"></script>
+		<script src="three.min.js"></script>
+		<script src="controls.min.js"></script>
+
+		<link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+  		<script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+
+  		<div id="motion" style="width:800px;">
+		    <div id="viewer" style="height:600px;"></div>
+			<div id="slider"></div>
+		</div>
+
+		<script>
+
+			var scene, camera, renderer, controls, ambientLight, lights, data, slider_elem;
+			var markers, lines, marker_line_mapping;
+			var marker_connections = {
+				// Head
+				'LFHD': ['RFHD', 'LBHD'],
+				'RBHD': ['RFHD', 'LBHD'],
+
+				// Torso
+				'C7': ['RFHD', 'LBHD', 'RBHD', 'LFHD', 'CLAV', 'LSHO', 'RSHO'],
+				'STRN': ['CLAV', 'RASI', 'LASI'],
+				//'RBAK': ['LBAK', 'RSHO'],
+				'T10': ['LSHO', 'RSHO'],
+				'L3': ['LPSI', 'RPSI', 'T10'],
+
+				// Left arm and hand
+				'LUPA': ['LSHO', 'LAEL'],
+				'LAEL': [ 'LFRA'],
+				'LFRA': ['LWPS', 'LWTS'],
+				'LWPS': ['LHPS'],
+				'LHTS': ['LWTS', 'LIFD'],
+
+				// Right arm and hand
+				'RUPA': ['RSHO', 'RAEL'],
+				'RAEL': ['RFRA'],
+				'RFRA': ['RWPS', 'RWTS'],
+				'RWPS': ['RHPS'],
+				'RHTS': ['RWTS', 'RIFD'],
+
+				// Left leg
+				'LHIP': ['LASI', 'LPSI'],
+				'LTHI': ['LHIP'],
+				'LKNE': ['LTHI', 'LTIP'],
+				'LHEE': ['LTIP', 'LANK', 'LMT1'],
+				'LMT5': ['LANK'],
+				'LMT1': ['LTOE'],
+
+				// Right leg
+				'RHIP': ['RASI', 'RPSI'],
+				'RTHI': ['RHIP'],
+				'RKNE': ['RTHI', 'RTIP'],
+				'RHEE': ['RTIP', 'RANK', 'RMT1'],
+				'RMT5': ['RANK'],
+				'RMT1': ['RTOE']
+			};
+			var frame_idx = 0, prev_frame_idx = -1;
+			var playing = true;
+			var looping = false;
+
+			function initScene() {
+				targetElement = document.getElementById("viewer");
+
+				scene = new THREE.Scene();
+				camera = new THREE.PerspectiveCamera(75, targetElement.offsetWidth / targetElement.offsetHeight, 0.001, 1000);
+				camera.up.set( 0, 0, 1 );
+				camera.position.z = 30;
+				camera.position.y = 30;
+
+				renderer = new THREE.WebGLRenderer({ antialias: true });
+				renderer.setPixelRatio(window.devicePixelRatio);
+				renderer.setSize(targetElement.offsetWidth, targetElement.offsetHeight);
+				renderer.setClearColor(0xffffff);
+				document.getElementById("viewer").appendChild(renderer.domElement);
+
+				controls = new THREE.OrbitControls(camera, renderer.domElement);
+				controls.enableZoom = true;
+				
+				initLights();
+				initFloor();
+				initMarkers();
+				updateMarkers();
+			};
+
+			function vectorToString(vec) {
+				return '(' + vec.x + ',' + vec.y + ',' + vec.z + ')';
+			};
+
+			function assert(condition, message) {
+ 				if (!condition) {
+        			throw message || 'Assertion failed';
+    			}
+			};
+
+			function initLights() {
+				ambientLight = new THREE.AmbientLight( 0xffffff );
+				scene.add(ambientLight);
+			};
+
+			function initFloor() {
+				// Based on https://gist.github.com/bhollis/7686441
+				var segments = 16;
+				var geometry = new THREE.PlaneGeometry(200, 200, segments, segments);
+  				var materialEven = new THREE.MeshBasicMaterial({color: 0x696969});
+  				var materialOdd = new THREE.MeshBasicMaterial({color: 0x9f9f9f});
+  				var materials = [materialEven, materialOdd];
+  				for (var x = 0; x < segments; x++) {
+    				for (var y = 0; y < segments; y++) {
+      					i = x * segments + y;
+      					j = 2 * i;
+      					geometry.faces[j].materialIndex = geometry.faces[j + 1].materialIndex = (x + y) % 2;
+      				}
+      			}
+      			floor = new THREE.Mesh(geometry, new THREE.MeshFaceMaterial(materials));
+      			scene.add(floor)
+			};
+
+			function markerIndexFromName(name) {
+				for (var i in data.markers) {
+					if (data.markers[i] == name) {
+						return i;
+					}
+				}
+				return -1;
+			};
+
+			function initMarkers() {
+				var n_markers = data.markers.length;
+				markers = []
+				for (var i = 0; i < n_markers; i++) {
+					var geometry = new THREE.SphereGeometry(0.1, 32, 32 );
+					var material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+					var marker = new THREE.Mesh(geometry, material);
+					markers.push(marker);
+					scene.add(marker);
+				}
+
+				lines = []
+				marker_line_mapping = []
+				for (var start_marker_name in marker_connections) {
+					for (var end_marker_idx in marker_connections[start_marker_name]) {
+						end_marker_name = marker_connections[start_marker_name][end_marker_idx];
+						
+						// Create line.
+						var material = new THREE.LineBasicMaterial({
+							color: 0x0000ff,
+							linewidth: 2.0
+						});
+						var geometry = new THREE.Geometry();
+						geometry.vertices.push(
+							new THREE.Vector3(0, 0, 0),
+							new THREE.Vector3(0, 0, 0)
+						);
+						var line = new THREE.Line(geometry, material);
+						line.dynamic = true;
+						lines.push(line);
+						start_idx = markerIndexFromName(start_marker_name);
+						assert(start_idx >= 0);
+						end_idx = markerIndexFromName(end_marker_name);
+						assert(end_idx >= 0);
+						marker_line_mapping.push([start_idx, end_idx])
+						scene.add(line);
+					}
+				}
+				/*for (var i = 0; i < marker_connections.length; i++) {
+					start = marker_connections
+					for (var j = 0; j < )
+				}
+				for (var i = 0; i < n_markers - 1; i = i + 2) {
+					var marker_a = markers[i];
+					var marker_b = markers[i + 1];
+
+					var material = new THREE.LineBasicMaterial({
+						color: 0x0000ff
+					});
+					var geometry = new THREE.Geometry();
+					geometry.vertices.push(
+						marker_a.position,
+						marker_b.position
+					);
+					var line = new THREE.Line(geometry, material);
+					lines.push(line);
+					scene.add(line);
+				}*/
+
+				/*// Create custom curve that interpolates between a start and end point.
+				var Curve = THREE.Curve.create(
+			    	function (marker_a, marker_b) {
+			        	this.marker_a = marker_a;
+			        	this.marker_b = marker_b;
+				    },
+
+				    function (t) {
+				    	var tx = this.marker_a.position.x + (this.marker_b.position.x - this.marker_a.position.x) * t;
+				    	var ty = this.marker_a.position.y + (this.marker_b.position.y - this.marker_a.position.y) * t;
+				    	var tz = this.marker_a.position.z + (this.marker_b.position.z - this.marker_a.position.z) * t;
+				    	return new THREE.Vector3(tx, ty, tz);
+				    }
+				);
+
+				// Create tubes that connect the markers.
+				tubes = [];
+				for (var i = 0; i < n_markers - 1; i = i + 2) {
+					var marker_a = markers[i];
+					var marker_b = markers[i + 1];
+
+					var path = new Curve(marker_a, marker_b);
+					var geometry = new THREE.TubeGeometry(
+						path,  //path
+				    	20,    //segments
+				    	0.2,     //radius
+				    	8,     //radiusSegments
+				    	false  //closed
+					);
+					geometry.dynamic = true;
+					var material = new THREE.MeshBasicMaterial();
+					var tube = new THREE.Mesh(geometry);
+					tubes.push(tube);
+					scene.add(tube);
+				}*/
+			};
+
+			function updateMarkers() {
+				for (var i = 0; i < markers.length; i++) {
+					var marker = markers[i];
+					marker.position.x = data.frames[frame_idx][i * 3 + 0];
+					marker.position.y = data.frames[frame_idx][i * 3 + 1];
+					marker.position.z = data.frames[frame_idx][i * 3 + 2];
+				}
+
+				for (var i in lines) {
+					mapping = marker_line_mapping[i];
+					start_marker = markers[mapping[0]]
+					end_marker = markers[mapping[1]]
+					line = lines[i];
+					line.geometry.vertices = [start_marker.position, end_marker.position];
+					line.geometry.verticesNeedUpdate = true;
+				}
+			};
+
+			function render() {
+				requestAnimationFrame(render);
+				if (frame_idx != prev_frame_idx) {
+					updateMarkers();
+				}
+				renderer.render(scene, camera);
+				prev_frame_idx = frame_idx;
+			};
+
+			function updateFrameIndexIfNecessary() {
+				if (playing && (looping || frame_idx < data.frames.length - 1)) {
+					frame_idx = (frame_idx + 1) % data.frames.length;
+				}
+				slider_elem.slider('value', frame_idx);
+			};
+
+			function initUi() {
+				slider_elem = $('#slider');
+				slider_elem.slider({
+					min: 0,
+					max: [data.frames.length - 1],
+					slide: function(event, ui) {
+						playing = false;
+						frame_idx = ui.value;
+					}
+				});
+			};
+
+			$.getJSON('/data.json', function(d) {
+				data = d;
+				initUi();
+				initScene();
+				render();
+				window.setInterval(updateFrameIndexIfNecessary, 10);
+  			});
+		</script>
+	</body>
+</html>
+
