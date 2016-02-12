@@ -36,24 +36,26 @@
 
 				// Left arm and hand
 				'LUPA': ['LSHO', 'LAEL'],
-				'LAEL': [ 'LFRA'],
-				'LFRA': ['LWPS', 'LWTS'],
-				'LWPS': ['LHPS'],
+				'LAEL': ['LFRA'],
+				'LFRA': ['LWTS'],
+				'LWPS': ['LHPS', 'LWTS'],
 				'LHTS': ['LWTS', 'LIFD'],
+				'LHPS': ['LIFD'],
 
 				// Right arm and hand
 				'RUPA': ['RSHO', 'RAEL'],
 				'RAEL': ['RFRA'],
-				'RFRA': ['RWPS', 'RWTS'],
-				'RWPS': ['RHPS'],
+				'RFRA': ['RWTS'],
+				'RWPS': ['RHPS', 'RWTS'],
 				'RHTS': ['RWTS', 'RIFD'],
+				'RHPS': ['RIFD'],
 
 				// Left leg
 				'LHIP': ['LASI', 'LPSI'],
 				'LTHI': ['LHIP'],
 				'LKNE': ['LTHI', 'LTIP'],
 				'LHEE': ['LTIP', 'LANK', 'LMT1'],
-				'LMT5': ['LANK'],
+				'LMT5': ['LANK', 'LTOE'],
 				'LMT1': ['LTOE'],
 
 				// Right leg
@@ -61,7 +63,7 @@
 				'RTHI': ['RHIP'],
 				'RKNE': ['RTHI', 'RTIP'],
 				'RHEE': ['RTIP', 'RANK', 'RMT1'],
-				'RMT5': ['RANK'],
+				'RMT5': ['RANK', 'RTOE'],
 				'RMT1': ['RTOE']
 			};
 			var frame_idx = 0, prev_frame_idx = -1;
