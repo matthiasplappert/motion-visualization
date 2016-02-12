@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
-		<title>Three.js Bones Browser</title>
+		<title>Motion Visualization</title>
 	</head>
 	<body>
 		<script src="jquery-1.12.0.min.js"></script>
@@ -276,7 +276,7 @@
 				});
 			};
 
-			$.getJSON('/data.json', function(d) {
+			$.getJSON('/motion-visualization/data.json', function(d) {
 				data = d;
 				initUi();
 				initScene();
